@@ -304,17 +304,23 @@ char * sdrcache = NULL;
 char * seloem   = NULL;
 char * devfile  = NULL;
 struct sdrData get_sdr_data(struct ipmi_intf * intf, char*  sdrname){
-    struct sdr_record_list *entry;
-    struct sensor_reading *sr;
+    struct sdr_record_list *entry=NULL;
+	// sdrname = "Ambient Temp";
+    struct sensor_reading *sr=NULL;
     struct sdrData mysdr;
+	memset(&mysdr, 0, sizeof(mysdr));
     mysdr.rc = -1;
+	
     sprintf(mysdr.name, "%s", sdrname);
-    entry = ipmi_sdr_find_sdr_byid(intf, sdrname);
+	printf("sdr name:%s*********\n",mysdr.name);
+    entry = ipmi_sdr_find_sdr_byid(intf, mysdr.name);
+	printf("C  a sdr nam*********\n");
         if (entry == NULL) {
             lprintf(LOG_ERR, "Unable to find sensor id '%s'",
-                sdrname);
+                mysdr.name);
             return mysdr;
         } else {
+
                sr = ipmi_sdr_read_sensor_value(intf, entry->record.common, entry->type, 2);
                if (sr == NULL) {
                     return mysdr;
@@ -322,17 +328,21 @@ struct sdrData get_sdr_data(struct ipmi_intf * intf, char*  sdrname){
                if (sr->s_reading_valid) {
                     mysdr.rc =0;
                     if( sr->s_has_analog_value ) {
+						// memcpy(mysdr->value,sr->s_a_str,sizeof (mysdr->value));
                         snprintf(mysdr.value, sizeof (mysdr.value), "%s",
                                       sr->s_a_str);
 
                     } else {
                         snprintf(mysdr.value, sizeof(mysdr.value),
                             "0x%02x", sr->s_reading);
+							
                     }
+					free(entry);
                     return mysdr;
                 }          
 
-        }     
+        }   
+		return mysdr;  
 }
 void ipmi_out_free(){
 	log_halt();

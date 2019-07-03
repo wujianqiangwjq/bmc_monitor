@@ -37,7 +37,7 @@
 struct sdrData{
     int rc;
     char name[32];
-    char value[32];
+    char value[16];
 };
 int ipmi_main(int argc, char ** argv, struct ipmi_cmd * cmdlist, struct ipmi_intf_support * intflist);
 void ipmi_cmd_print(struct ipmi_cmd * cmdlist);

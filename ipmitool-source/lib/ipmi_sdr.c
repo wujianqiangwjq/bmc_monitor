@@ -1397,7 +1397,7 @@ ipmi_sdr_read_sensor_value(struct ipmi_intf *intf,
 		 struct sdr_record_common_sensor *sensor,
 		 uint8_t sdr_record_type, int precision)
 {
-	static struct sensor_reading sr;
+	struct sensor_reading sr;
 
 	if (sensor == NULL)
 		return NULL;
@@ -3899,17 +3899,24 @@ ipmi_sdr_find_sdr_byid(struct ipmi_intf *intf, char *id)
 		}
 
 		/* add to global record liset */
-		if (sdr_list_head == NULL)
-			sdr_list_head = sdrr;
-		else
-			sdr_list_tail->next = sdrr;
+		// if (sdr_list_head == NULL)
+		// 	sdr_list_head = sdrr;
+		// else
+		// 	sdr_list_tail->next = sdrr;
 
-		sdr_list_tail = sdrr;
+		// sdr_list_tail = sdrr;
 
-		if (found)
+		if (found){
+			free(sdr_list_itr);
+			sdr_list_itr=NULL;
 			return sdrr;
+		}
+			
 	}
-
+	if (sdr_list_itr != NULL){
+		free(sdr_list_itr);
+		sdr_list_itr=NULL;
+	}
 	return NULL;
 }
 

@@ -1,0 +1,21 @@
+config:
+  default:
+    temp: "Ambient Temp"
+    power: 
+      - "PSU1 AC In Pwr"
+      - "PSU1 DC Out Pwr"
+      - "PSU2 AC In Pwr"
+      - "PSU2 DC Out Pwr"
+      - "Sys Power"
+      - "CPU Power"
+      - "Mem Power"
+      - "Sys Fan Pwr"
+  sd560:
+    temp: "Ambient Temp"
+    power: 
+      - "PSU2 AC In Pwr"
+      - "PSU2 DC Out Pwr"
+      - "Sys Power"
+      - "CPU Power"
+      - "Mem Power"
+      - "Sys Fan Pwr"

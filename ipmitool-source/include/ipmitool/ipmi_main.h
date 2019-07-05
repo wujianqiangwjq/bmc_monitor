@@ -39,11 +39,17 @@ struct sdrData{
     char name[32];
     char value[16];
 };
+struct bmc_client{
+    struct ipmi_intf* intf;
+    struct ipmi_sdr_iterator* sdr_list_itr;
+    struct sdr_record_list *sdrr;
+    char *res;
+};
 int ipmi_main(int argc, char ** argv, struct ipmi_cmd * cmdlist, struct ipmi_intf_support * intflist);
 void ipmi_cmd_print(struct ipmi_cmd * cmdlist);
 int ipmi_cmd_run(struct ipmi_intf * intf, char * name, int argc, char ** argv);
-struct ipmi_intf * ipmi_connect(int argc, char ** argv, struct ipmi_cmd * cmdlist);
-void ipmi_close(struct ipmi_intf * intf);
-void ipmi_out_free();
-struct sdrData get_sdr_data(struct ipmi_intf * intf, char*  sdrname);
+struct bmc_client* 
+ipmi_client(char* username, char *password, char*hostname,struct ipmi_cmd * cmdlist,struct ipmi_intf_support * intflist);
+struct sdrData get_sdr_data(struct ipmi_intf* intf, char*  sdrname);
+void ipmi_close(struct bmc_client * client);
 #endif /* IPMI_MAIN_H */

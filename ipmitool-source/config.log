@@ -627,8 +627,8 @@ configure:5045: $? = 0
 configure:5045: result: yes
 configure:5056: checking for getpassphrase
 configure:5056: gcc -o conftest -g -O2   conftest.c  >&5
-/tmp/cc2JO7r1.o: In function `main':
-/ipmitool-IPMITOOL_1_8_18/conftest.c:83: undefined reference to `getpassphrase'
+/tmp/ccJcDBlp.o: In function `main':
+/bmc_monitor/ipmitool-source/conftest.c:83: undefined reference to `getpassphrase'
 collect2: error: ld returned 1 exit status
 configure:5056: $? = 1
 configure: failed program was:
@@ -869,7 +869,7 @@ conftest.c:63:4: warning: ISO C99 doesn't support unnamed structs/unions [-Wpeda
 conftest.c:59:9: warning: struct has no named members [-Wpedantic]
   struct test {
          ^
-conftest.c:66:8: warning: 'test.<U3d10>.a' is used uninitialized in this function [-Wuninitialized]
+conftest.c:66:8: warning: 'test.<U1d10>.a' is used uninitialized in this function [-Wuninitialized]
   printf("a is %d", test.a);
         ^
 configure:12548: $? = 0
@@ -1578,8 +1578,8 @@ configure:13374: checking for sys/lipmi/lipmi_intf.h
 configure:13374: result: no
 configure:13447: checking for library containing tgetent
 configure:13478: gcc -o conftest -g -O2 -Wall -Wextra -std=gnu99 -pedantic -Wformat -Wformat-nonliteral   conftest.c  -lcrypto >&5
-/tmp/ccbjgXwt.o: In function `main':
-/ipmitool-IPMITOOL_1_8_18/conftest.c:73: undefined reference to `tgetent'
+/tmp/ccUKeOq4.o: In function `main':
+/bmc_monitor/ipmitool-source/conftest.c:73: undefined reference to `tgetent'
 collect2: error: ld returned 1 exit status
 configure:13478: $? = 1
 configure: failed program was:
@@ -2067,8 +2067,8 @@ configure: failed program was:
 configure:13495: result: no
 configure:13503: checking for library containing initscr
 configure:13534: gcc -o conftest -g -O2 -Wall -Wextra -std=gnu99 -pedantic -Wformat -Wformat-nonliteral   conftest.c  -lcrypto >&5
-/tmp/cc83wXyk.o: In function `main':
-/ipmitool-IPMITOOL_1_8_18/conftest.c:73: undefined reference to `initscr'
+/tmp/ccNsUQwb.o: In function `main':
+/bmc_monitor/ipmitool-source/conftest.c:73: undefined reference to `initscr'
 collect2: error: ld returned 1 exit status
 configure:13534: $? = 1
 configure: failed program was:
@@ -2313,8 +2313,8 @@ configure: failed program was:
 configure:13551: result: no
 configure:13559: checking for library containing readline
 configure:13590: gcc -o conftest -g -O2 -Wall -Wextra -std=gnu99 -pedantic -Wformat -Wformat-nonliteral   conftest.c  -lcrypto >&5
-/tmp/ccMgwPcL.o: In function `main':
-/ipmitool-IPMITOOL_1_8_18/conftest.c:73: undefined reference to `readline'
+/tmp/ccgj1Evz.o: In function `main':
+/bmc_monitor/ipmitool-source/conftest.c:73: undefined reference to `readline'
 collect2: error: ld returned 1 exit status
 configure:13590: $? = 1
 configure: failed program was:
@@ -2807,6 +2807,7 @@ config.status:1176: creating src/plugins/lipmi/Makefile
 config.status:1176: creating src/plugins/serial/Makefile
 config.status:1176: creating src/plugins/dummy/Makefile
 config.status:1176: creating config.h
+config.status:1357: config.h is unchanged
 config.status:1405: executing depfiles commands
 config.status:1405: executing libtool commands
 configure:16260: result: 
@@ -2963,7 +2964,7 @@ lt_cv_to_tool_file_cmd=func_convert_file_noop
 ## Output variables. ##
 ## ----------------- ##
 
-ACLOCAL='${SHELL} /ipmitool-IPMITOOL_1_8_18/missing aclocal-1.13'
+ACLOCAL='${SHELL} /bmc_monitor/ipmitool-source/missing aclocal-1.13'
 AMDEPBACKSLASH='\'
 AMDEP_FALSE='#'
 AMDEP_TRUE=''
@@ -2974,9 +2975,9 @@ AM_DEFAULT_VERBOSITY='1'
 AM_V='$(V)'
 AR='ar'
 ARCH='x86_64'
-AUTOCONF='${SHELL} /ipmitool-IPMITOOL_1_8_18/missing autoconf'
-AUTOHEADER='${SHELL} /ipmitool-IPMITOOL_1_8_18/missing autoheader'
-AUTOMAKE='${SHELL} /ipmitool-IPMITOOL_1_8_18/missing automake-1.13'
+AUTOCONF='${SHELL} /bmc_monitor/ipmitool-source/missing autoconf'
+AUTOHEADER='${SHELL} /bmc_monitor/ipmitool-source/missing autoheader'
+AUTOMAKE='${SHELL} /bmc_monitor/ipmitool-source/missing automake-1.13'
 AWK='gawk'
 BASEDIR='/usr/local'
 CC='gcc'
@@ -3031,7 +3032,7 @@ LIBTOOL='$(SHELL) $(top_builddir)/libtool --silent'
 LIPO=''
 LN_S='ln -s'
 LTLIBOBJS=''
-MAKEINFO='${SHELL} /ipmitool-IPMITOOL_1_8_18/missing makeinfo'
+MAKEINFO='${SHELL} /bmc_monitor/ipmitool-source/missing makeinfo'
 MANIFEST_TOOL=':'
 MKDIR_P='/usr/bin/mkdir -p'
 NM='/usr/bin/nm -B'
@@ -3093,7 +3094,7 @@ host_vendor='unknown'
 htmldir='${docdir}'
 includedir='${prefix}/include'
 infodir='${datarootdir}/info'
-install_sh='${SHELL} /ipmitool-IPMITOOL_1_8_18/install-sh'
+install_sh='${SHELL} /bmc_monitor/ipmitool-source/install-sh'
 libdir='${exec_prefix}/lib'
 libexecdir='${exec_prefix}/libexec'
 localedir='${datarootdir}/locale'

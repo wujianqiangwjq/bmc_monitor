@@ -2950,6 +2950,122 @@ ipmi_sdr_start(struct ipmi_intf *intf, int use_builtin)
 	return itr;
 }
 
+int 
+ipmi_sdr_start_me(struct ipmi_intf *intf, struct ipmi_sdr_iterator *itr)
+{
+	struct ipmi_rs *rsp;
+	struct ipmi_rq req;
+	int use_builtin = 0;
+	struct ipm_devid_rsp *devid;
+	memset(itr,0,sizeof(struct ipmi_sdr_iterator));
+	/* check SDRR capability */
+	memset(&req, 0, sizeof (req));
+	req.msg.netfn = IPMI_NETFN_APP;
+	req.msg.cmd = BMC_GET_DEVICE_ID;
+	req.msg.data_len = 0;
+
+	rsp = intf->sendrecv(intf, &req);
+
+	if (rsp == NULL) {
+		lprintf(LOG_ERR, "Get Device ID command failed");
+		return -1;
+	}
+	if (rsp->ccode > 0) {
+		lprintf(LOG_ERR, "Get Device ID command failed: %#x %s",
+			rsp->ccode, val2str(rsp->ccode, completion_code_vals));
+		
+		return -1;
+	}
+	devid = (struct ipm_devid_rsp *) rsp->data;
+
+   sdriana =  (long)IPM_DEV_MANUFACTURER_ID(devid->manufacturer_id);
+
+	if (!use_builtin && (devid->device_revision & IPM_DEV_DEVICE_ID_SDR_MASK)) {
+		if ((devid->adtl_device_support & 0x02) == 0) {
+			if ((devid->adtl_device_support & 0x01)) {
+				lprintf(LOG_DEBUG, "Using Device SDRs\n");
+				use_built_in = 1;
+			} else {
+				lprintf(LOG_ERR, "Error obtaining SDR info");
+				return -1;
+			}
+		} else {
+			lprintf(LOG_DEBUG, "Using SDR from Repository \n");
+		}
+	}
+	itr->use_built_in = use_builtin ? 1 : use_built_in;
+   /***********************/
+	if (itr->use_built_in == 0) {
+		struct sdr_repo_info_rs sdr_info;
+		/* get sdr repository info */
+		memset(&req, 0, sizeof (req));
+		req.msg.netfn = IPMI_NETFN_STORAGE;
+		req.msg.cmd = GET_SDR_REPO_INFO;
+
+		rsp = intf->sendrecv(intf, &req);
+		if (rsp == NULL) {
+			lprintf(LOG_ERR, "Error obtaining SDR info");
+			return -1;
+		}
+		if (rsp->ccode > 0) {
+			lprintf(LOG_ERR, "Error obtaining SDR info: %s",
+				val2str(rsp->ccode, completion_code_vals));
+			return -1;
+		}
+
+		memcpy(&sdr_info, rsp->data, sizeof (sdr_info));
+		/* IPMIv1.0 == 0x01
+		   * IPMIv1.5 == 0x51
+		   * IPMIv2.0 == 0x02
+		 */
+		if ((sdr_info.version != 0x51) &&
+		    (sdr_info.version != 0x01) &&
+		    (sdr_info.version != 0x02)) {
+			lprintf(LOG_WARN, "WARNING: Unknown SDR repository "
+				"version 0x%02x", sdr_info.version);
+		}
+
+		itr->total = sdr_info.count;
+		itr->next = 0;
+
+		lprintf(LOG_DEBUG, "SDR free space: %d", sdr_info.free);
+		lprintf(LOG_DEBUG, "SDR records   : %d", sdr_info.count);
+
+		/* Build SDRR if there is no record in repository */
+		if( sdr_info.count == 0 ) {
+		   lprintf(LOG_DEBUG, "Rebuilding SDRR...");
+
+		   if( ipmi_sdr_add_from_sensors( intf, 0 ) != 0 ) {
+		      lprintf(LOG_ERR, "Could not build SDRR!");
+		      return -1;
+		   }
+		}
+	} else {
+		struct sdr_device_info_rs sdr_info;
+		/* get device sdr info */
+		memset(&req, 0, sizeof (req));
+		req.msg.netfn = IPMI_NETFN_SE;
+		req.msg.cmd = GET_DEVICE_SDR_INFO;
+
+		rsp = intf->sendrecv(intf, &req);
+		if (!rsp || !rsp->data_len || rsp->ccode) {
+			printf("Err in cmd get sensor sdr info\n");
+			return -1;
+		}
+		memcpy(&sdr_info, rsp->data, sizeof (sdr_info));
+
+		itr->total = sdr_info.count;
+		itr->next = 0;
+		lprintf(LOG_DEBUG, "SDR records   : %d", sdr_info.count);
+	}
+
+	if (ipmi_sdr_get_reservation(intf, itr->use_built_in,
+                                &(itr->reservation)) < 0) {
+		lprintf(LOG_ERR, "Unable to obtain SDR reservation");
+		return -1;
+	}
+	return 0;
+}
 /* ipmi_sdr_get_record  -  return RAW SDR record
  *
  * @intf:	ipmi interface
@@ -3762,48 +3878,6 @@ ipmi_sdr_find_sdr_byid(struct ipmi_intf *intf, char *id)
 		}
 	}
 
-	/* check what we've already read */
-	for (e = sdr_list_head; e != NULL; e = e->next) {
-		switch (e->type) {
-		case SDR_RECORD_TYPE_FULL_SENSOR:
-			if (!strncmp((const char *)e->record.full->id_string,
-				     (const char *)id,
-				     __max(e->record.full->id_code & 0x1f, idlen)))
-				return e;
-			break;
-		case SDR_RECORD_TYPE_COMPACT_SENSOR:
-			if (!strncmp((const char *)e->record.compact->id_string,
-				     (const char *)id,
-				     __max(e->record.compact->id_code & 0x1f, idlen)))
-				return e;
-			break;
-		case SDR_RECORD_TYPE_EVENTONLY_SENSOR:
-			if (!strncmp((const char *)e->record.eventonly->id_string,
-				     (const char *)id,
-				     __max(e->record.eventonly->id_code & 0x1f, idlen)))
-				return e;
-			break;
-		case SDR_RECORD_TYPE_GENERIC_DEVICE_LOCATOR:
-			if (!strncmp((const char *)e->record.genloc->id_string,
-				     (const char *)id,
-				     __max(e->record.genloc->id_code & 0x1f, idlen)))
-				return e;
-			break;
-		case SDR_RECORD_TYPE_FRU_DEVICE_LOCATOR:
-			if (!strncmp((const char *)e->record.fruloc->id_string,
-				     (const char *)id,
-				     __max(e->record.fruloc->id_code & 0x1f, idlen)))
-				return e;
-			break;
-		case SDR_RECORD_TYPE_MC_DEVICE_LOCATOR:
-			if (!strncmp((const char *)e->record.mcloc->id_string,
-				     (const char *)id,
-				     __max(e->record.mcloc->id_code & 0x1f, idlen)))
-				return e;
-			break;
-		}
-	}
-
 	/* now keep looking */
 	while ((header = ipmi_sdr_get_next_header(intf, sdr_list_itr)) != NULL) {
 		uint8_t *rec;
@@ -3919,7 +3993,125 @@ ipmi_sdr_find_sdr_byid(struct ipmi_intf *intf, char *id)
 	}
 	return NULL;
 }
+int is_disgit(char* in){
+return strspn(in, "0123456789")==strlen(in);
+}
 
+int ipmi_sdr_byid_me(struct ipmi_intf *intf, struct sdr_record_list *sdrr,char *res,char* name ){
+	char* id=name;
+	int idlen =strlen(id);
+	int rc = 0;
+	char value[16];
+	int nums;
+	struct sensor_reading *sr=NULL;
+	if (!strncmp((const char *)sdrr->record.full->id_string,
+		(const char *)id,__max(sdrr->record.full->id_code & 0x1f, idlen))){
+			nums=0;
+			while (nums<2){ 
+				nums++;
+				sr = ipmi_sdr_read_sensor_value(intf, sdrr->record.common, sdrr->type, 2);
+				if (sr == NULL){
+					strcat(res,id);
+					strcat(res,":unkown,");
+					break;
+				}else{
+					rc = 1;
+					if (sr->s_reading_valid) {
+							if( sr->s_has_analog_value ) {
+								
+								snprintf(value, sizeof (sr->s_a_str), "%s",
+											sr->s_a_str);
+								if (is_disgit(value)){
+										strcat(res,id);
+										strcat(res,":");
+										strcat(res,value);
+										strcat(res,",");
+										break;
+								}
+								
+							
+
+							} else {
+								
+								snprintf(value, sizeof(sr->s_reading),
+									"0x%02x", sr->s_reading);
+								if (is_disgit(value)){
+										strcat(res,id);
+										strcat(res,":");
+										strcat(res,value);
+										strcat(res,",");
+										break;
+								}
+								
+								
+							}
+
+					}else{
+						strcat(res,id);
+						strcat(res,":unread,");
+						break;
+					}
+							
+				}
+			}
+			
+		}
+
+
+		return rc;
+
+}
+void
+ipmi_sdr_find_sdr_byids_me(struct ipmi_intf *intf,int argc, char** argv, char *res,
+		struct sdr_record_list *sdrr, struct ipmi_sdr_iterator* sdr_list_itr)
+{
+	struct sdr_get_rs *header;
+	struct sensor_reading *sr=NULL;
+	int c=0;
+	int j=0;
+	memset(res,0,sizeof(char)*512);
+	struct sdr_record_list* srl = malloc(sizeof(struct sdr_record_list));
+	while ((header = ipmi_sdr_get_next_header(intf, sdr_list_itr)) != NULL) {
+		uint8_t *rec;
+		memset(sdrr,0,sizeof(struct sdr_record_list));
+		sdrr->id = header->id;
+		sdrr->type = header->type;
+		rec = ipmi_sdr_get_record(intf, header, sdr_list_itr);
+		if (rec == NULL) {
+			continue;
+		}
+		
+		switch (header->type) {
+		case SDR_RECORD_TYPE_FULL_SENSOR:
+			sdrr->record.full =
+			    (struct sdr_record_full_sensor *) rec;
+			for(int i=0; i<argc; i++){
+					c=ipmi_sdr_byid_me(intf, sdrr,res,argv[i]);
+					if(c){
+						j=i;
+						if (argc==1){
+							argc=0;
+							break;
+						}else if(j == argc -1){
+							argc = argc-1;
+							
+						}else{
+							for(j;j<argc-1;j++){
+								argv[j]=argv[j+1];
+							}
+							argc = argc-1;
+						}
+						break;
+					}	
+				}
+			}		
+		
+		free(rec);
+		rec=NULL;
+		continue;
+
+	}
+}
 /* ipmi_sdr_list_cache_fromfile  -  generate SDR cache for fast lookup from local file
  *
  * @intf:	ipmi interface

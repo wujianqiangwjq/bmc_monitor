@@ -130,12 +130,30 @@ struct ipmi_cmd ipmitool_cmd_list[] = {
 int
 main(int argc, char ** argv)
 {
-	int rc;
+	// int rc;
 
-	rc = ipmi_main(argc, argv, ipmitool_cmd_list, NULL);
+	// rc = ipmi_main(argc, argv, ipmitool_cmd_list, NULL);
 
-	if (rc < 0)
-		exit(EXIT_FAILURE);
-	else
-		exit(EXIT_SUCCESS);
+	// if (rc < 0)
+	// 	exit(EXIT_FAILURE);
+	// else
+	// 	exit(EXIT_SUCCESS);
+
+    struct bmc_client* client;
+	char *username="USERID";
+	char *password="PASSW0RD";
+	char *hostname="10.240.212.99";
+    int rc;
+    client=ipmi_client(username, password,hostname,ipmitool_cmd_list,NULL);
+	rc=ipmi_sdr_start_me(client->intf,client->sdr_list_itr);
+    if (rc==0){
+         int num = 2;
+		 char *v[]={"Ambient Temp","DIMM AB VR Temp"};
+         ipmi_sdr_find_sdr_byids_me(client->intf,num, v,client->res,
+		client->sdrr, client->sdr_list_itr);
+        printf("get data:%s\n",client->res);
+		
+
+    }
+	ipmi_close(client);
 }

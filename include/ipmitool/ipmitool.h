@@ -1,7 +1,6 @@
 #include <ipmitool/ipmi.h>
 #include <ipmitool/ipmi_intf.h>
 #include <ipmitool/ipmi_main.h>
-
 #include <ipmitool/ipmi_sdr.h>
 #include <ipmitool/ipmi_gendev.h>
 #include <ipmitool/ipmi_sel.h>
@@ -35,15 +34,16 @@
 # include <config.h>
 #endif
 
-#ifdef HAVE_READLINE
-extern int ipmi_shell_main(struct ipmi_intf * intf, int argc, char ** argv);
+#ifdef ENABLE_ALL_OPTIONS
+# define OPTION_STRING  "I:46hVvcgsEKYao:H:d:P:f:U:p:C:L:A:t:T:m:z:S:l:b:B:e:k:y:O:R:N:D:"
+#else
+# define OPTION_STRING  "I:46hVvcH:f:U:p:d:S:D:"
 #endif
-extern int ipmi_lan6_main(struct ipmi_intf *intf, int argc, char **argv);
 
 
-int csv_output = 1;
+
+int csv_output = 0;
 int verbose = 0;
-
 struct ipmi_cmd ipmitool_cmd_list[] = {
 	{ ipmi_raw_main,     "raw",     "Send a RAW IPMI request and print response" },
 	{ ipmi_rawi2c_main,  "i2c",     "Send an I2C Master Write-Read command and print response" },
@@ -54,7 +54,6 @@ struct ipmi_cmd ipmitool_cmd_list[] = {
 	{ ipmi_event_main,   "event",   "Send pre-defined events to MC" },
 	{ ipmi_mc_main,      "mc",      "Management Controller status and global enables" },
 	{ ipmi_mc_main,      "bmc",     NULL },
-	{ ipmi_sdr_main,     "sdr",     "Print Sensor Data Repository entries and readings" },
 	{ ipmi_sensor_main,  "sensor",  "Print detailed sensor information" },
 	{ ipmi_fru_main,     "fru",     "Print built-in FRU and scan SDR for FRU locators" },
 	{ ipmi_gendev_main,  "gendev",  "Read/Write Device associated with Generic Device locators sdr" },
@@ -78,24 +77,46 @@ struct ipmi_cmd ipmitool_cmd_list[] = {
 	{ ipmi_ekanalyzer_main,"ekanalyzer", "run FRU-Ekeying analyzer using FRU files"},
 	{ ipmi_ime_main,          "ime", "Update Intel Manageability Engine Firmware"},
 	{ ipmi_vita_main,   "vita",   "Run a VITA 46.11 extended cmd"},
-	{ ipmi_lan6_main,   "lan6",   "Configure IPv6 LAN Channels"},
 	{ NULL },
 };
 
 
-struct ipmi_intf * bmc_connect(int argc, char ** argv)
-{
-        struct ipmi_intf *intf;
-	intf=ipmi_connect(argc, argv, ipmitool_cmd_list);
-   
-   return intf;
-    
-}
-char* printv(struct ipmi_intf *intf, char * name){
-    struct sdrData sdr;
-    sdr=get_sdr_data(intf, name);
-    char *res = (char*)malloc(sizeof(sdr.value));
-    memcpy(res, sdr.value,sizeof(sdr.value));
-    return res;
+
+
+struct bmc_client*  bmc_connect(char* username, char *password, char*hostname){
+     return ipmi_client(username,password,hostname,ipmitool_cmd_list,NULL);
 }
 
+void get_sdr(struct bmc_client* client, int num, char ** name){
+    int rc;
+    rc=ipmi_sdr_start_me(client->intf,client->sdr_list_itr);
+    if (rc==0){
+         ipmi_sdr_find_sdr_byids_me(client->intf,num, name,client->res,
+		client->sdrr, client->sdr_list_itr);
+
+    }   
+   
+}
+
+
+int run_power_on(struct bmc_client* client){
+    int rc =-1;
+    uint8_t ctl = IPMI_CHASSIS_CTL_POWER_UP;
+    rc = ipmi_chassis_power_control(client->intf, ctl);
+	return rc;
+}
+
+int run_power_off(struct bmc_client* client){
+    int rc = -1;
+    uint8_t ctl = IPMI_CHASSIS_CTL_POWER_DOWN;
+    rc = ipmi_chassis_power_control(client->intf, ctl);
+	return rc;
+}
+
+int bmc_chassis_power_status(struct bmc_client* client){
+    return ipmi_chassis_power_status(client->intf);
+}
+
+int bmc_close(struct bmc_client* client){
+    ipmi_close(client);
+}

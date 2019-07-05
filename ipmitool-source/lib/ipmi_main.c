@@ -295,15 +295,8 @@ ipmi_acquire_ipmb_address(struct ipmi_intf * intf)
 		return 0;
     }
 }
-char * hostname = NULL;
-char * username = NULL;
-char * password = NULL;
-char * intfname = NULL;
-char * oemtype  = NULL;
-char * sdrcache = NULL;
-char * seloem   = NULL;
-char * devfile  = NULL;
-struct sdrData get_sdr_data(struct ipmi_intf * intf, char*  sdrname){
+
+struct sdrData get_sdr_data(struct ipmi_intf* intf, char*  sdrname){
     struct sdr_record_list *entry=NULL;
 	// sdrname = "Ambient Temp";
     struct sensor_reading *sr=NULL;
@@ -312,9 +305,7 @@ struct sdrData get_sdr_data(struct ipmi_intf * intf, char*  sdrname){
     mysdr.rc = -1;
 	
     sprintf(mysdr.name, "%s", sdrname);
-	printf("sdr name:%s*********\n",mysdr.name);
     entry = ipmi_sdr_find_sdr_byid(intf, mysdr.name);
-	printf("C  a sdr nam*********\n");
         if (entry == NULL) {
             lprintf(LOG_ERR, "Unable to find sensor id '%s'",
                 mysdr.name);
@@ -344,780 +335,220 @@ struct sdrData get_sdr_data(struct ipmi_intf * intf, char*  sdrname){
         }   
 		return mysdr;  
 }
-void ipmi_out_free(){
-	log_halt();
 
-	if (intfname != NULL) {
-		free(intfname);
-		intfname = NULL;
-	}
-	if (hostname != NULL) {
-		free(hostname);
-		hostname = NULL;
-	}
-	if (username != NULL) {
-		free(username);
-		username = NULL;
-	}
-	if (password != NULL) {
-		free(password);
-		password = NULL;
-	}
-	if (oemtype != NULL) {
-		free(oemtype);
-		oemtype = NULL;
-	}
-	if (seloem != NULL) {
-		free(seloem);
-		seloem = NULL;
-	}
-	if (sdrcache != NULL) {
-		free(sdrcache);
-		sdrcache = NULL;
-	}
-	if (devfile) {
-		free(devfile);
-		devfile = NULL;
-	}
-}
-
-void ipmi_close(struct ipmi_intf * intf){
-	ipmi_cleanup(intf);
+void ipmi_close(struct bmc_client* bc){
+	ipmi_cleanup(bc->intf);
 
 	/* call interface close function if available */
-	if (intf->opened > 0 && intf->close != NULL)
-		intf->close(intf);
+	if (bc->intf->opened > 0 && bc->intf->close != NULL)
+		bc->intf->close(bc->intf);
 
+	free(bc->intf);
+	free(bc->sdr_list_itr);
+	free(bc->sdrr);
+	free(bc->res);
+	free(bc);
 }
-
-struct ipmi_intf *
-ipmi_connect(int argc, char ** argv,
-		struct ipmi_cmd * cmdlist)
+struct bmc_client* 
+ipmi_client(char* username, char *password, char*hostname,
+        struct ipmi_cmd * cmdlist,
+        struct ipmi_intf_support * intflist)
 {
-	struct ipmi_intf_support * sup;
-	struct ipmi_intf_support * intflist=NULL;
-	int privlvl = 0;
-	uint8_t target_addr = 0;
-	uint8_t target_channel = 0;
-	uint8_t transit_addr = 0;
-	uint8_t transit_channel = 0;
-	uint8_t target_lun     = 0;
-	uint8_t arg_addr = 0;
-	uint8_t addr = 0;
-	uint16_t my_long_packet_size=0;
-	uint8_t my_long_packet_set=0;
-	uint8_t lookupbit = 0x10;	/* use name-only lookup by default */
-	int retry = 0;
-	uint32_t timeout = 0;
-	int authtype = -1;
-	char * tmp_pass = NULL;
-	char * tmp_env = NULL;
-	
-	char * progname = NULL;
-	
-	uint8_t kgkey[IPMI_KG_BUFFER_SIZE];
-	
-	int port = 0;
-	int devnum = 0;
-	int cipher_suite_id = 3; /* See table 22-19 of the IPMIv2 spec */
-	int argflag, i, found;
-	int rc = -1;
-	int ai_family = AF_UNSPEC;
-	char sol_escape_char = SOL_ESCAPE_CHARACTER_DEFAULT;
+    struct ipmi_intf_support * sup;
+    struct ipmi_intf * ipmi_main =NULL ;
+    struct ipmi_intf * temp =NULL ;
+    int privlvl = 0;
+    uint8_t target_addr = 0;
+    uint8_t target_channel = 0;
 
-	/* save program name */
-	progname = strrchr(argv[0], '/');
-	progname = ((progname == NULL) ? argv[0] : progname+1);
-	signal(SIGINT, ipmi_catch_sigint);
-	memset(kgkey, 0, sizeof(kgkey));
-
-	while ((argflag = getopt(argc, (char **)argv, OPTION_STRING)) != -1)
-	{
-		switch (argflag) {
-		case 'I':
-			if (intfname) {
-				free(intfname);
-				intfname = NULL;
-			}
-			intfname = strdup(optarg);
-			if (intfname == NULL) {
-				lprintf(LOG_ERR, "%s: malloc failure", progname);
-				ipmi_out_free();
-				return NULL;
-			}
-			if (intflist != NULL) {
-				found = 0;
-				for (sup=intflist; sup->name != NULL; sup++) {
-					if (strncmp(sup->name, intfname, strlen(intfname)) == 0 &&
-							strncmp(sup->name, intfname, strlen(sup->name)) == 0 &&
-							sup->supported == 1)
-						found = 1;
-				}
-				if (!found) {
-					lprintf(LOG_ERR, "Interface %s not supported", intfname);
-					ipmi_out_free();
-				return NULL;
-				}
-			}
-			break;
-		case 'h':
-			ipmi_option_usage(progname, cmdlist, intflist);
-			rc = 0;
-		ipmi_out_free();
-				return NULL;
-			break;
-		case 'V':
-			printf("%s version %s\n", progname, VERSION);
-			rc = 0;
-			ipmi_out_free();
-				return NULL;
-			break;
-		case 'd':
-			if (str2int(optarg, &devnum) != 0) {
-				lprintf(LOG_ERR, "Invalid parameter given or out of range for '-d'.");
-				rc = -1;
-				ipmi_out_free();
-				return NULL;
-			}
-			/* Check if device number is -gt 0; I couldn't find limit for
-			 * kernels > 2.6, thus right side is unlimited.
-			 */
-			if (devnum < 0) {
-				lprintf(LOG_ERR, "Device number %i is out of range.", devnum);
-				rc = -1;
-				ipmi_out_free();
-				return NULL;
-			}
-			break;
-		case 'p':
-			if (str2int(optarg, &port) != 0) {
-				lprintf(LOG_ERR, "Invalid parameter given or out of range for '-p'.");
-				rc = -1;
-				ipmi_out_free();
-				return NULL;
-			}
-			/* Check if port is -gt 0 && port is -lt 65535 */
-			if (port < 0 || port > 65535) {
-				lprintf(LOG_ERR, "Port number %i is out of range.", port);
-				rc = -1;
-				ipmi_out_free();
-				return NULL;
-			}
-			break;
-		case 'C':
-			if (str2int(optarg, &cipher_suite_id) != 0) {
-				lprintf(LOG_ERR, "Invalid parameter given or out of range for '-C'.");
-				rc = -1;
-				ipmi_out_free();
-				return NULL;
-			}
-			/* add check Cipher is -gt 0 */
-			if (cipher_suite_id < 0) {
-				lprintf(LOG_ERR, "Cipher suite ID %i is invalid.", cipher_suite_id);
-				rc = -1;
-				ipmi_out_free();
-				return NULL;
-			}
-			break;
-		case 'v':
-			verbose++;
-			break;
-		case 'c':
-			csv_output = 1;
-			break;
-		case 'H':
-			if (hostname) {
-				free(hostname);
-				hostname = NULL;
-			}
-			hostname = strdup(optarg);
-			if (hostname == NULL) {
-				lprintf(LOG_ERR, "%s: malloc failure", progname);
-				ipmi_out_free();
-				return NULL;
-			}
-			break;
-		case 'f':
-			if (password) {
-				free(password);
-				password = NULL;
-			}
-			password = ipmi_password_file_read(optarg);
-			if (password == NULL)
-				lprintf(LOG_ERR, "Unable to read password "
-						"from file %s", optarg);
-			break;
-		case 'a':
+    uint8_t transit_addr = 0;
+    uint8_t transit_channel = 0;
+    uint8_t target_lun     = 0;
+    uint8_t arg_addr = 0;
+    uint8_t addr = 0;
+    uint16_t my_long_packet_size=0;
+    uint8_t my_long_packet_set=0;
+    uint8_t lookupbit = 0x10;   /* use name-only lookup by default */
+    int retry = 0;
+    uint32_t timeout = 0;
+    int authtype = -1;
+    char * tmp_pass = NULL;
+    char * tmp_env = NULL;
+    char * intfname = "lanplus";
+    char * progname = "ipmitool";
+    uint8_t kgkey[IPMI_KG_BUFFER_SIZE];
+    char * seloem   = NULL;
+    int port = 0;
+    int devnum = 0;
+    int cipher_suite_id = 3; /* See table 22-19 of the IPMIv2 spec */
+    int argflag, i, found;
+    int rc = -1;
+    int ai_family = AF_UNSPEC;
+    char sol_escape_char = SOL_ESCAPE_CHARACTER_DEFAULT;
+    char * devfile  = NULL;
+    memset(kgkey, 0, sizeof(kgkey));
+	struct bmc_client* bmclient =NULL; 
+  
+    if (hostname != NULL && password == NULL &&
+            (authtype != IPMI_SESSION_AUTHTYPE_NONE || authtype < 0)) {
 #ifdef HAVE_GETPASSPHRASE
-			tmp_pass = getpassphrase("Password: ");
+        tmp_pass = getpassphrase("Password: ");
 #else
-			tmp_pass = getpass("Password: ");
+        tmp_pass = getpass("Password: ");
 #endif
-			if (tmp_pass != NULL) {
-				if (password) {
-					free(password);
-					password = NULL;
-				}
-				password = strdup(tmp_pass);
-				tmp_pass = NULL;
-				if (password == NULL) {
-					lprintf(LOG_ERR, "%s: malloc failure", progname);
-					ipmi_out_free();
-				return NULL;
-				}
-			}
-			break;
-		case 'k':
-			memset(kgkey, 0, sizeof(kgkey));
-			strncpy((char *)kgkey, optarg, sizeof(kgkey) - 1);
-			break;
-		case 'K':
-			if ((tmp_env = getenv("IPMI_KGKEY"))) {
-				memset(kgkey, 0, sizeof(kgkey));
-				strncpy((char *)kgkey, tmp_env,
-					sizeof(kgkey) - 1);
-			} else {
-				lprintf(LOG_WARN, "Unable to read kgkey from environment");
-			}
-			break;
-		case 'y':
-			memset(kgkey, 0, sizeof(kgkey));
+        if (tmp_pass != NULL) {
+            password = strdup(tmp_pass);
+            tmp_pass = NULL;
+            if (password == NULL) {
+                return NULL;
+            }
+        }
+    }
 
-			rc = ipmi_parse_hex(optarg, kgkey, sizeof(kgkey) - 1);
-			if (rc == -1) {
-				lprintf(LOG_ERR, "Number of Kg key characters is not even");
-				ipmi_out_free();
-				return NULL;
-			} else if (rc == -3) {
-				lprintf(LOG_ERR, "Kg key is not hexadecimal number");
-				ipmi_out_free();
-				return NULL;
-			} else if (rc > (IPMI_KG_BUFFER_SIZE-1)) {
-				lprintf(LOG_ERR, "Kg key is too long");
-				ipmi_out_free();
-				return NULL;
-			}
-			break;
-		case 'Y':
-#ifdef HAVE_GETPASSPHRASE
-			tmp_pass = getpassphrase("Key: ");
-#else
-			tmp_pass = getpass("Key: ");
-#endif
-			if (tmp_pass != NULL) {
-				memset(kgkey, 0, sizeof(kgkey));
-				strncpy((char *)kgkey, tmp_pass,
-					sizeof(kgkey) - 1);
-				tmp_pass = NULL;
-			}
-			break;
-		case 'U':
-			if (username) {
-				free(username);
-				username = NULL;
-			}
-			if (strlen(optarg) > 16) {
-				lprintf(LOG_ERR, "Username is too long (> 16 bytes)");
-			ipmi_out_free();
-				return NULL;
-			}
-			username = strdup(optarg);
-			if (username == NULL) {
-				lprintf(LOG_ERR, "%s: malloc failure", progname);
-				ipmi_out_free();
-				return NULL;
-			}
-			break;
-		case 'S':
-			if (sdrcache) {
-				free(sdrcache);
-				sdrcache = NULL;
-			}
-			sdrcache = strdup(optarg);
-			if (sdrcache == NULL) {
-				lprintf(LOG_ERR, "%s: malloc failure", progname);
-				ipmi_out_free();
-				return NULL;
-			}
-			break;
-		case 'D':
-			/* check for subsequent instance of -D */
-			if (devfile) {
-				/* free memory for previous string */
-				free(devfile);
-			}
-			devfile = strdup(optarg);
-			if (devfile == NULL) {
-				lprintf(LOG_ERR, "%s: malloc failure", progname);
-				ipmi_out_free();
-				return NULL;
-			}
-			break;
-		case '4':
-			/* IPv4 only */
-			if (ai_family == AF_UNSPEC) {
-				ai_family = AF_INET;
-			} else {
-				if (ai_family == AF_INET6) {
-					lprintf(LOG_ERR,
-						"Parameter is mutually exclusive with -6.");
-				} else {
-					lprintf(LOG_ERR,
-						"Multiple -4 parameters given.");
-				}
-				rc = (-1);
-				ipmi_out_free();
-				return NULL;
-			}
-			break;
-		case '6':
-			/* IPv6 only */
-			if (ai_family == AF_UNSPEC) {
-				ai_family = AF_INET6;
-			} else {
-				if (ai_family == AF_INET) {
-					lprintf(LOG_ERR,
-						"Parameter is mutually exclusive with -4.");
-				} else {
-					lprintf(LOG_ERR,
-						"Multiple -6 parameters given.");
-				}
-				rc = (-1);
-				ipmi_out_free();
-				return NULL;
-			}
-			break;
-#ifdef ENABLE_ALL_OPTIONS
-		case 'o':
-			if (oemtype) {
-				free(oemtype);
-				oemtype = NULL;
-			}
-			oemtype = strdup(optarg);
-			if (oemtype == NULL) {
-				lprintf(LOG_ERR, "%s: malloc failure", progname);
-				ipmi_out_free();
-				return NULL;
-			}
-			if (strncmp(oemtype, "list", 4) == 0 ||
-					strncmp(oemtype, "help", 4) == 0) {
-				ipmi_oem_print();
-				rc = 0;
-				ipmi_out_free();
-				return NULL;
-			}
-			break;
-		case 'g':
-			/* backwards compatible oem hack */
-			if (oemtype) {
-				free(oemtype);
-				oemtype = NULL;
-			}
-			oemtype = strdup("intelwv2");
-			break;
-		case 's':
-			/* backwards compatible oem hack */
-			if (oemtype) {
-				free(oemtype);
-				oemtype = NULL;
-			}
-			oemtype = strdup("supermicro");
-			break;
-		case 'P':
-			if (password) {
-				free(password);
-				password = NULL;
-			}
-			password = strdup(optarg);
-			if (password == NULL) {
-				lprintf(LOG_ERR, "%s: malloc failure", progname);
-				ipmi_out_free();
-				return NULL;
-			}
+    temp = ipmi_intf_load(intfname);
+    if (temp == NULL) {
+            return NULL;
+    }
+      
+    if (ipmi_main !=NULL){
+          free(ipmi_main);
+          ipmi_main=NULL;
+      }
+      ipmi_main = (struct ipmi_intf*)malloc(sizeof(struct ipmi_intf));
+      memcpy(ipmi_main,temp,sizeof(struct ipmi_intf));
+    /* setup log */
+    log_init(progname, 0, verbose);
 
-			/* Prevent password snooping with ps */
-			i = strlen(optarg);
-			memset(optarg, 'X', i);
-			break;
-		case 'E':
-			if ((tmp_env = getenv("IPMITOOL_PASSWORD"))) {
-				if (password) {
-					free(password);
-					password = NULL;
-				}
-				password = strdup(tmp_env);
-				if (password == NULL) {
-					lprintf(LOG_ERR, "%s: malloc failure", progname);
-					ipmi_out_free();
-				return NULL;
-				}
-			}
-			else if ((tmp_env = getenv("IPMI_PASSWORD"))) {
-				if (password) {
-					free(password);
-					password = NULL;
-				}
-				password = strdup(tmp_env);
-				if (password == NULL) {
-					lprintf(LOG_ERR, "%s: malloc failure", progname);
-					ipmi_out_free();
-				return NULL;
-				}
-			}
-			else {
-				lprintf(LOG_WARN, "Unable to read password from environment");
-			}
-			break;
-		case 'L':
-			i = strlen(optarg);
-			if ((i > 0) && (optarg[i-1] == '+')) {
-				lookupbit = 0;
-				optarg[i-1] = 0;
-			}
-			privlvl = str2val(optarg, ipmi_privlvl_vals);
-			if (privlvl == 0xFF) {
-				lprintf(LOG_WARN, "Invalid privilege level %s", optarg);
-			}
-			break;
-		case 'A':
-			authtype = str2val(optarg, ipmi_authtype_session_vals);
-			break;
-		case 't':
-			if (str2uchar(optarg, &target_addr) != 0) {
-				lprintf(LOG_ERR, "Invalid parameter given or out of range for '-t'.");
-				rc = -1;
-				ipmi_out_free();
-			}
-			break;
-		case 'b':
-			if (str2uchar(optarg, &target_channel) != 0) {
-				lprintf(LOG_ERR, "Invalid parameter given or out of range for '-b'.");
-				rc = -1;
-				ipmi_out_free();
-			}
-			break;
-		case 'T':
-			if (str2uchar(optarg, &transit_addr) != 0) {
-				lprintf(LOG_ERR, "Invalid parameter given or out of range for '-T'.");
-				rc = -1;
-				ipmi_out_free();
-			}
-			break;
-		case 'B':
-			if (str2uchar(optarg, &transit_channel) != 0) {
-				lprintf(LOG_ERR, "Invalid parameter given or out of range for '-B'.");
-				rc = -1;
-				ipmi_out_free();
-			}
-			break;
-		case 'l':
-			if (str2uchar(optarg, &target_lun) != 0) {
-				lprintf(LOG_ERR, "Invalid parameter given or out of range for '-l'.");
-				rc = 1;
-				ipmi_out_free();
-			}
-			break;
-		case 'm':
-			if (str2uchar(optarg, &arg_addr) != 0) {
-				lprintf(LOG_ERR, "Invalid parameter given or out of range for '-m'.");
-				rc = -1;
-				ipmi_out_free();
-			}
-			break;
-		case 'e':
-			sol_escape_char = optarg[0];
-			break;
-		case 'O':
-			if (seloem) {
-				free(seloem);
-				seloem = NULL;
-			}
-			seloem = strdup(optarg);
-			if (seloem == NULL) {
-				lprintf(LOG_ERR, "%s: malloc failure", progname);
-				ipmi_out_free();
-			}
-			break;
-		case 'z':
-			if (str2ushort(optarg, &my_long_packet_size) != 0) {
-				lprintf(LOG_ERR, "Invalid parameter given or out of range for '-z'.");
-				rc = -1;
-				ipmi_out_free();
-			}
-			break;
-		/* Retry and Timeout */
-		case 'R':
-			if (str2int(optarg, &retry) != 0 || retry < 0) {
-				lprintf(LOG_ERR, "Invalid parameter given or out of range for '-R'.");
-				rc = -1;
-				ipmi_out_free();
-			}
-			break;
-		case 'N':
-			if (str2uint(optarg, &timeout) != 0) {
-				lprintf(LOG_ERR, "Invalid parameter given or out of range for '-N'.");
-				rc = -1;
-				ipmi_out_free();
-			}
-			break;
-#endif
-		default:
-			ipmi_option_usage(progname, cmdlist, intflist);
-			ipmi_out_free();
-				return NULL;
-		}
-	}
+    /* set session variables */
+    if (hostname != NULL)
+        ipmi_intf_session_set_hostname(ipmi_main, hostname);
+    if (username != NULL)
+        ipmi_intf_session_set_username(ipmi_main, username);
+    if (password != NULL)
+        ipmi_intf_session_set_password(ipmi_main, password);
+    ipmi_intf_session_set_kgkey(ipmi_main, kgkey);
+    if (port > 0)
+        ipmi_intf_session_set_port(ipmi_main, port);
+    if (authtype >= 0)
+        ipmi_intf_session_set_authtype(ipmi_main, (uint8_t)authtype);
+    if (privlvl > 0)
+        ipmi_intf_session_set_privlvl(ipmi_main, (uint8_t)privlvl);
+    else
+        ipmi_intf_session_set_privlvl(ipmi_main,
+                IPMI_SESSION_PRIV_ADMIN);   /* default */
+    /* Adding retry and timeout for interface that support it */
+    if (retry > 0)
+        ipmi_intf_session_set_retry(ipmi_main, retry);
+    if (timeout > 0)
+        ipmi_intf_session_set_timeout(ipmi_main, timeout);
 
-	/* check for command before doing anything */
-	if (argc-optind > 0 &&
-			strncmp(argv[optind], "help", 4) == 0) {
-		ipmi_cmd_print(cmdlist);
-		rc = 0;
-		ipmi_out_free();
-				return NULL;
-	}
+    ipmi_intf_session_set_lookupbit(ipmi_main, lookupbit);
+    ipmi_intf_session_set_sol_escape_char(ipmi_main, sol_escape_char);
+    ipmi_intf_session_set_cipher_suite_id(ipmi_main, cipher_suite_id);
 
-	/*
-	 * If the user has specified a hostname (-H option)
-	 * then this is a remote access session.
-	 *
-	 * If no password was specified by any other method
-	 * and the authtype was not explicitly set to NONE
-	 * then prompt the user.
-	 */
-	if (hostname != NULL && password == NULL &&
-			(authtype != IPMI_SESSION_AUTHTYPE_NONE || authtype < 0)) {
-#ifdef HAVE_GETPASSPHRASE
-		tmp_pass = getpassphrase("Password: ");
-#else
-		tmp_pass = getpass("Password: ");
-#endif
-		if (tmp_pass != NULL) {
-			password = strdup(tmp_pass);
-			tmp_pass = NULL;
-			if (password == NULL) {
-				lprintf(LOG_ERR, "%s: malloc failure", progname);
-				ipmi_out_free();
-			}
-		}
-	}
+    ipmi_main->devnum = devnum;
 
-	/* if no interface was specified but a
-	 * hostname was then use LAN by default
-	 * otherwise the default is hardcoded
-	 * to use the first entry in the list
-	 */
-	if (intfname == NULL && hostname != NULL) {
-		intfname = strdup("lan");
-		if (intfname == NULL) {
-			lprintf(LOG_ERR, "%s: malloc failure", progname);
-			ipmi_out_free();
-				return NULL;
-		}
-	}
+    /* setup device file if given */
+    ipmi_main->devfile = devfile;
 
-	if (password != NULL && intfname != NULL) {
-		if (strcmp(intfname, "lan") == 0 && strlen(password) > 16) {
-			lprintf(LOG_ERR, "%s: password is longer than 16 bytes.", intfname);
-			rc = -1;
-			ipmi_out_free();
-				return NULL;
-		} else if (strcmp(intfname, "lanplus") == 0 && strlen(password) > 20) {
-			lprintf(LOG_ERR, "%s: password is longer than 20 bytes.", intfname);
-			rc = -1;
-			ipmi_out_free();
-				return NULL;
-		}
-	} /* if (password != NULL && intfname != NULL) */
+    ipmi_main->ai_family = ai_family;
+    /* Open the interface with the specified or default IPMB address */
+    ipmi_main->my_addr = arg_addr ? arg_addr : IPMI_BMC_SLAVE_ADDR;
+    if (ipmi_main->open != NULL) {
+        if (ipmi_main->open(ipmi_main) < 0) {
+            return NULL;
+        }
+    }
 
-	/* load interface */
-	ipmi_main_intf = ipmi_intf_load(intfname);
-	if (ipmi_main_intf == NULL) {
-		lprintf(LOG_ERR, "Error loading interface %s", intfname);
-		ipmi_out_free();
-				return NULL;
-	}
+    if (!ipmi_oem_active(ipmi_main, "i82571spt")) {
+        if (picmg_discover(ipmi_main)) {
+            ipmi_main->picmg_avail = 1;
+        } else if (vita_discover(ipmi_main)) {
+            ipmi_main->vita_avail = 1;
+        }
+    }
 
-	/* setup log */
-	log_init(progname, 0, verbose);
+    if (arg_addr) {
+        addr = arg_addr;
+    } else if (!ipmi_oem_active(ipmi_main, "i82571spt")) {
+        
+        addr = ipmi_acquire_ipmb_address(ipmi_main);
+    }
 
-	/* run OEM setup if found */
-	if (oemtype != NULL &&
-	    ipmi_oem_setup(ipmi_main_intf, oemtype) < 0) {
-		lprintf(LOG_ERR, "OEM setup for \"%s\" failed", oemtype);
-		ipmi_out_free();
-				return NULL;
-	}
+    /*
+     * If we discovered the ipmb address and it is not the same as what we
+     * used for open, Set the discovered IPMB address as my address if the
+     * interface supports it.
+     */
+    if (addr != 0 && addr != ipmi_main->my_addr) {
+        if (ipmi_main->set_my_addr) {
+            /*
+             * Some interfaces need special handling
+             * when changing local address
+             */
+            (void)ipmi_main->set_my_addr(ipmi_main, addr);
+        }
 
-	/* set session variables */
-	if (hostname != NULL)
-		ipmi_intf_session_set_hostname(ipmi_main_intf, hostname);
-	if (username != NULL)
-		ipmi_intf_session_set_username(ipmi_main_intf, username);
-	if (password != NULL)
-		ipmi_intf_session_set_password(ipmi_main_intf, password);
-	ipmi_intf_session_set_kgkey(ipmi_main_intf, kgkey);
-	if (port > 0)
-		ipmi_intf_session_set_port(ipmi_main_intf, port);
-	if (authtype >= 0)
-		ipmi_intf_session_set_authtype(ipmi_main_intf, (uint8_t)authtype);
-	if (privlvl > 0)
-		ipmi_intf_session_set_privlvl(ipmi_main_intf, (uint8_t)privlvl);
-	else
-		ipmi_intf_session_set_privlvl(ipmi_main_intf,
-				IPMI_SESSION_PRIV_ADMIN);	/* default */
-	/* Adding retry and timeout for interface that support it */
-	if (retry > 0)
-		ipmi_intf_session_set_retry(ipmi_main_intf, retry);
-	if (timeout > 0)
-		ipmi_intf_session_set_timeout(ipmi_main_intf, timeout);
+        /* set local address */
+        ipmi_main->my_addr = addr;
+    }
 
-	ipmi_intf_session_set_lookupbit(ipmi_main_intf, lookupbit);
-	ipmi_intf_session_set_sol_escape_char(ipmi_main_intf, sol_escape_char);
-	ipmi_intf_session_set_cipher_suite_id(ipmi_main_intf, cipher_suite_id);
+    ipmi_main->target_addr = ipmi_main->my_addr;
 
-	ipmi_main_intf->devnum = devnum;
+    /* If bridging addresses are specified, handle them */
+    if (transit_addr > 0 || target_addr > 0) {
+        /* sanity check, transit makes no sense without a target */
+        if ((transit_addr != 0 || transit_channel != 0) &&
+            target_addr == 0) {
+                return NULL;
+        }
+        ipmi_main->target_addr = target_addr;
+        ipmi_main->target_channel = target_channel ;
 
-	/* setup device file if given */
-	ipmi_main_intf->devfile = devfile;
-
-	ipmi_main_intf->ai_family = ai_family;
-	/* Open the interface with the specified or default IPMB address */
-	ipmi_main_intf->my_addr = arg_addr ? arg_addr : IPMI_BMC_SLAVE_ADDR;
-	if (ipmi_main_intf->open != NULL) {
-		if (ipmi_main_intf->open(ipmi_main_intf) < 0) {
-			ipmi_out_free();
-				return NULL;
-		}
-	}
-
-	if (!ipmi_oem_active(ipmi_main_intf, "i82571spt")) {
-		/*
-		 * Attempt picmg/vita discovery of the actual interface
-		 * address, unless the users specified an address.
-		 * Address specification always overrides discovery
-		 */
-		if (picmg_discover(ipmi_main_intf)) {
-			ipmi_main_intf->picmg_avail = 1;
-		} else if (vita_discover(ipmi_main_intf)) {
-			ipmi_main_intf->vita_avail = 1;
-		}
-	}
-
-	if (arg_addr) {
-		addr = arg_addr;
-	} else if (!ipmi_oem_active(ipmi_main_intf, "i82571spt")) {
-		lprintf(LOG_DEBUG, "Acquire IPMB address");
-		addr = ipmi_acquire_ipmb_address(ipmi_main_intf);
-		lprintf(LOG_INFO,  "Discovered IPMB address 0x%x", addr);
-	}
-
-	/*
-	 * If we discovered the ipmb address and it is not the same as what we
-	 * used for open, Set the discovered IPMB address as my address if the
-	 * interface supports it.
-	 */
-	if (addr != 0 && addr != ipmi_main_intf->my_addr) {
-		if (ipmi_main_intf->set_my_addr) {
-			/*
-			 * Some interfaces need special handling
-			 * when changing local address
-			 */
-			(void)ipmi_main_intf->set_my_addr(ipmi_main_intf, addr);
-		}
-
-		/* set local address */
-		ipmi_main_intf->my_addr = addr;
-	}
-
-	ipmi_main_intf->target_addr = ipmi_main_intf->my_addr;
-
-	/* If bridging addresses are specified, handle them */
-	if (transit_addr > 0 || target_addr > 0) {
-		/* sanity check, transit makes no sense without a target */
-		if ((transit_addr != 0 || transit_channel != 0) &&
-			target_addr == 0) {
-			lprintf(LOG_ERR,
-				"Transit address/channel %#x/%#x ignored. "
-				"Target address must be specified!",
-				transit_addr, transit_channel);
-			ipmi_out_free();
-				return NULL;
-		}
-		ipmi_main_intf->target_addr = target_addr;
-		ipmi_main_intf->target_channel = target_channel ;
-
-		ipmi_main_intf->transit_addr    = transit_addr;
-		ipmi_main_intf->transit_channel = transit_channel;
+        ipmi_main->transit_addr    = transit_addr;
+        ipmi_main->transit_channel = transit_channel;
 
 
-		/* must be admin level to do this over lan */
-		ipmi_intf_session_set_privlvl(ipmi_main_intf, IPMI_SESSION_PRIV_ADMIN);
-		/* Get the ipmb address of the targeted entity */
-		ipmi_main_intf->target_ipmb_addr =
-					ipmi_acquire_ipmb_address(ipmi_main_intf);
-		lprintf(LOG_DEBUG, "Specified addressing     Target  %#x:%#x Transit %#x:%#x",
-					   ipmi_main_intf->target_addr,
-					   ipmi_main_intf->target_channel,
-					   ipmi_main_intf->transit_addr,
-					   ipmi_main_intf->transit_channel);
-		if (ipmi_main_intf->target_ipmb_addr) {
-			lprintf(LOG_INFO, "Discovered Target IPMB-0 address %#x",
-					   ipmi_main_intf->target_ipmb_addr);
-		}
-	}
+        /* must be admin level to do this over lan */
+        ipmi_intf_session_set_privlvl(ipmi_main, IPMI_SESSION_PRIV_ADMIN);
+        /* Get the ipmb address of the targeted entity */
+        ipmi_main->target_ipmb_addr =
+                    ipmi_acquire_ipmb_address(ipmi_main);
+        
+        
+    }
 
-	/* set target LUN (for RAW command) */
-	ipmi_main_intf->target_lun = target_lun ;
+    /* set target LUN (for RAW command) */
+    ipmi_main->target_lun = target_lun ;
 
-	lprintf(LOG_DEBUG, "Interface address: my_addr %#x "
-			   "transit %#x:%#x target %#x:%#x "
-			   "ipmb_target %#x\n",
-			ipmi_main_intf->my_addr,
-			ipmi_main_intf->transit_addr,
-			ipmi_main_intf->transit_channel,
-			ipmi_main_intf->target_addr,
-			ipmi_main_intf->target_channel,
-			ipmi_main_intf->target_ipmb_addr);
+    /* Enable Big Buffer when requested */
+    if ( my_long_packet_size != 0 ) {
+        /* Enable Big Buffer when requested */
+        if (!ipmi_oem_active(ipmi_main, "kontron") ||
+            ipmi_kontronoem_set_large_buffer(ipmi_main,
+                    my_long_packet_size ) == 0) {
+            printf("Setting large buffer to %i\n", my_long_packet_size);
+            my_long_packet_set = 1;
+            ipmi_intf_set_max_request_data_size(ipmi_main,
+                    my_long_packet_size);
+        }
+    }
 
-	/* parse local SDR cache if given */
-	if (sdrcache != NULL) {
-		ipmi_sdr_list_cache_fromfile(ipmi_main_intf, sdrcache);
-	}
-	/* Parse SEL OEM file if given */
-	if (seloem != NULL) {
-		ipmi_sel_oem_init(seloem);
-	}
+    ipmi_main->cmdlist = cmdlist;
 
-	/* Enable Big Buffer when requested */
-	if ( my_long_packet_size != 0 ) {
-		/* Enable Big Buffer when requested */
-		if (!ipmi_oem_active(ipmi_main_intf, "kontron") ||
-			ipmi_kontronoem_set_large_buffer(ipmi_main_intf,
-					my_long_packet_size ) == 0) {
-			printf("Setting large buffer to %i\n", my_long_packet_size);
-			my_long_packet_set = 1;
-			ipmi_intf_set_max_request_data_size(ipmi_main_intf,
-					my_long_packet_size);
-		}
-	}
-
-	ipmi_main_intf->cmdlist = cmdlist;
-
-
-	if (my_long_packet_set == 1) {
-		if (ipmi_oem_active(ipmi_main_intf, "kontron")) {
-			/* Restore defaults */
-			ipmi_kontronoem_set_large_buffer( ipmi_main_intf, 0 );
-		}
-	}
-
-	/* clean repository caches */
-	
-return ipmi_main_intf;
-
+    if (my_long_packet_set == 1) {
+        if (ipmi_oem_active(ipmi_main, "kontron")) {
+            /* Restore defaults */
+            ipmi_kontronoem_set_large_buffer( ipmi_main, 0 );
+        }
+    }
+	bmclient = malloc(sizeof(struct bmc_client));
+	bmclient->intf = ipmi_main;
+	bmclient->sdr_list_itr = malloc(sizeof(struct ipmi_sdr_iterator));
+	bmclient->sdrr = malloc(sizeof(struct sdr_record_list));
+	bmclient->res = malloc(sizeof(char)*512);
+    return bmclient;
 }
-
 
 /* ipmi_parse_options  -  helper function to handle parsing command line options
  *

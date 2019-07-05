@@ -43,7 +43,7 @@
 #include <ipmitool/ipmi.h>
 #include <ipmitool/ipmi_entity.h>
 
-int ipmi_sdr_main(struct ipmi_intf *, int, char **, char*);
+int ipmi_sdr_main(struct ipmi_intf *, int, char **);
 
 #define tos32(val, bits)    ((val & ((1<<((bits)-1)))) ? (-((val) & (1<<((bits)-1))) | (val)) : (val))
 
@@ -860,6 +860,7 @@ struct sensor_reading {
 
 struct ipmi_sdr_iterator *ipmi_sdr_start(struct ipmi_intf *intf,
                                          int use_builtin);
+int ipmi_sdr_start_me(struct ipmi_intf *intf,struct ipmi_sdr_iterator *itr);
 struct sdr_get_rs *ipmi_sdr_get_next_header(struct ipmi_intf *intf,
 					    struct ipmi_sdr_iterator *i);
 uint8_t *ipmi_sdr_get_record(struct ipmi_intf *intf, struct sdr_get_rs *header,
@@ -873,8 +874,6 @@ int ipmi_sdr_print_rawentry(struct ipmi_intf *intf, uint8_t type, uint8_t * raw,
 			    int len);
 int ipmi_sdr_print_listentry(struct ipmi_intf *intf,
 			     struct sdr_record_list *entry);
-int ipmi_sdr_print_listentry_sdr(struct ipmi_intf *intf,
-			     struct sdr_record_list *entry, char * sdr_value);
 void ipmi_sdr_print_sensor_hysteresis(struct sdr_record_common_sensor *sensor,
 		 struct sdr_record_full_sensor   *full,
 		 uint8_t hysteresis_value,
@@ -932,6 +931,8 @@ struct sdr_record_list *ipmi_sdr_find_sdr_bysensortype(struct ipmi_intf *intf,
 						       uint8_t type);
 struct sdr_record_list *ipmi_sdr_find_sdr_byid(struct ipmi_intf *intf,
 					       char *id);
+void ipmi_sdr_find_sdr_byids_me(struct ipmi_intf *intf,int argc, char** argv,char *res,
+		struct sdr_record_list *sdrr, struct ipmi_sdr_iterator* sdr_list_itr);
 struct sdr_record_list *ipmi_sdr_find_sdr_bytype(struct ipmi_intf *intf,
 						 uint8_t type);
 int ipmi_sdr_list_cache(struct ipmi_intf *intf);

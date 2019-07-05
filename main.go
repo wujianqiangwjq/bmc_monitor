@@ -106,7 +106,7 @@ func main() {
 		log.Fatal(err)
 	}
 	nodes := badger.GetAll()
-	// badger.Close()
+	badger.Close()
 	//get config plugin
 	configs, err := LoadConfig(plugn_path)
 	if err != nil {

@@ -74,12 +74,9 @@ func (nc *NodeClient) GetSdrValues() string {
 			defer C.free(unsafe.Pointer(nameunits[i]))
 		}
 		num := len(nc.SdrsName)
-		fmt.Println("Get start************")
-		fmt.Println(nc.SdrsName)
 		C.get_sdr(nc.Intf, C.int(num), ((**C.char)(unsafe.Pointer(&nameunits[0]))))
 
 		res = C.GoString(nc.Intf.res)
-		fmt.Println(res)
 
 	}
 	return res

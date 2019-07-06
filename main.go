@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"net/http"
 	"strconv"
 
 	"os"
@@ -10,11 +11,75 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/astaxie/beego/config"
 )
 
 var config_p string
+var nodeclients []*NodeClient
 
+func GetNodeClient(nodeclients []*NodeClient, name string) *NodeClient {
+	for _, value := range nodeclients {
+		if value.Node.Host == name {
+			return value
+		}
+	}
+	return nil
+
+}
+
+type PowerData struct {
+	Node  string `json:"node"`
+	State string `json:"state"`
+}
+
+func middle(c *gin.Context) {
+	username, passowrd, ok := c.Request.BasicAuth()
+	if ok && username == "lico" && passowrd == "Passw0rd" {
+		c.Next()
+	} else {
+		c.Abort()
+		c.JSON(http.StatusUnauthorized, gin.H{"errid": 2013, "msg": "Invalid backend auth header format"})
+	}
+
+}
+func PowerHandle(c *gin.Context) {
+	var pdata PowerData
+
+	err := c.BindJSON(&pdata)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"msg": err})
+	} else {
+		node := pdata.Node
+		state := pdata.State
+		nc := GetNodeClient(nodeclients, node)
+		if nc == nil {
+			c.JSON(http.StatusOK, gin.H{"status": "failed", "msg": "cannot  get node:" + node})
+		} else {
+			var rc int
+			if state == "on" {
+				rc = nc.RunPowerCommand(true)
+
+			} else {
+				rc = nc.RunPowerCommand(false)
+			}
+			if rc == -1 {
+				c.JSON(http.StatusOK, gin.H{"status": "failed", "msg": "handle failed"})
+			} else {
+				c.JSON(http.StatusOK, gin.H{"status": "success"})
+			}
+		}
+	}
+
+}
+func StartWeb(addr string) {
+	r := gin.Default()
+	group := r.Group("/api", middle)
+	group.POST("/node/power/state", PowerHandle)
+	r.Run(addr)
+
+}
 func main() {
 	flag.StringVar(&config_p, "c", "/etc/ipmi.ini", "config path")
 	flag.Parse()
@@ -112,7 +177,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	var nodeclients []*NodeClient
+
 	for index, _ := range nodes {
 		node := nodes[index]
 		nodeclient := node.GetNodeClient()
@@ -179,10 +244,11 @@ func main() {
 		go tasks[index].Run(&wg)
 
 	}
+	go StartWeb(":4005")
 	wg.Wait()
-	for index, _ := range tasks {
-		tasks[index].Close()
+	// for index, _ := range tasks {
+	// 	tasks[index].Close()
 
-	}
+	// }
 
 }

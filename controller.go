@@ -126,7 +126,13 @@ func (task *Task) Run(wg *sync.WaitGroup) {
 				node.Connect()
 				if node.Status {
 					task.Mux.Lock()
-					task.Issues = append(task.Issues[:index], task.Issues[index+1:]...)
+					nodelens := len(task.Issues)
+					if index == (nodelens - 1) {
+						task.Issues = task.Issues[:index]
+					} else {
+						task.Issues = append(task.Issues[:index], task.Issues[index+1:]...)
+					}
+
 					task.Mux.Unlock()
 
 				}
